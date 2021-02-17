@@ -1,11 +1,16 @@
 #include <Windows.h>
 #include <d3d12.h>
 #include <dxgi1_6.h>
+#include <DirectXMath.h>
+#include <d3dcompiler.h>
+#include <algorithm>
+#include <iostream>
 #include <vector>
 #include <string>
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "d3dcompiler.lib")
 
 LRESULT WindowProcedure(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
@@ -27,6 +32,16 @@ void EnableDebugLayer()
     debug_layer->Release();
 }
 
+void DebugOutput(const char* format, ...)
+{
+#ifdef _DEBUG
+    va_list valist;
+    va_start(valist, format);
+    vprintf(format, valist);
+    va_end(valist);
+#endif
+}
+
 int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int)
 {
     // Create window
@@ -38,8 +53,8 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int)
 
     RegisterClassEx(&win);
 
-    constexpr int win_width = 1280;
-    constexpr int win_height = 720;
+    constexpr unsigned int win_width = 1280;
+    constexpr unsigned int win_height = 720;
     RECT wrc = { 0, 0, win_width, win_height };
 
     AdjustWindowRect(&wrc, WS_OVERLAPPEDWINDOW, false);
@@ -178,6 +193,119 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int)
     
     if (device->CreateFence(fence_val, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)) != S_OK)
         exit(10);
+
+    // Create vertices buffer
+    DirectX::XMFLOAT3 vertices[] =
+    {
+        {-1.f, -1.f, 0.f},
+        {-1.f,  1.f, 0.f},
+        { 1.f, -1.f, 0.f},
+    };
+
+    D3D12_HEAP_PROPERTIES heap_property = {};
+    heap_property.Type = D3D12_HEAP_TYPE_UPLOAD;
+    heap_property.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+    heap_property.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+
+    D3D12_RESOURCE_DESC resource_desc = {};
+    resource_desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    resource_desc.Width = sizeof(vertices);
+    resource_desc.Height = 1;
+    resource_desc.DepthOrArraySize = 1;
+    resource_desc.MipLevels = 1;
+    resource_desc.Format = DXGI_FORMAT_UNKNOWN;
+    resource_desc.SampleDesc.Count = 1;
+    resource_desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+    resource_desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+    ID3D12Resource* vert_buff = nullptr;
+    if (device->CreateCommittedResource(
+        &heap_property,
+        D3D12_HEAP_FLAG_NONE,
+        &resource_desc,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&vert_buff)) != S_OK)
+    {
+        exit(11);
+    }
+
+    // Copy vertices
+    DirectX::XMFLOAT3* vertices_map = nullptr;
+    if (vert_buff->Map(0, nullptr, (void**)&vertices_map) != S_OK)
+        exit(12);
+
+    std::copy(std::begin(vertices), std::end(vertices), vertices_map);
+    vert_buff->Unmap(0, nullptr);
+
+    // Create vertices buffer view
+    D3D12_VERTEX_BUFFER_VIEW vert_buff_view = {};
+    vert_buff_view.BufferLocation = vert_buff->GetGPUVirtualAddress();
+    vert_buff_view.SizeInBytes = sizeof(vertices);
+    vert_buff_view.StrideInBytes = sizeof(vertices[0]);
+
+    // Shader compile
+    ID3DBlob* vs_blob = nullptr;
+    ID3DBlob* ps_blob = nullptr;
+    ID3DBlob* err_blob = nullptr;
+
+    HRESULT result = D3DCompileFromFile(
+        L"Shader/SimpleVertexShader.hlsl",
+        nullptr,
+        D3D_COMPILE_STANDARD_FILE_INCLUDE,
+        "SimpleVS", "vs_5_0",
+        D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
+        0,
+        &vs_blob, &err_blob
+    );
+
+    if (FAILED(result))
+    {
+        if (result == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
+        {
+            DebugOutput("Vertex shader file not found");
+            exit(13);
+        }
+        else
+        {
+            std::string err_str;
+            err_str.resize(err_blob->GetBufferSize());
+            std::copy_n((char*)err_blob->GetBufferPointer(), err_blob->GetBufferSize(), err_str.begin());
+            err_str += "\n";
+
+            DebugOutput(err_str.c_str());
+            exit(14);
+        }
+    }
+
+    result = D3DCompileFromFile(
+        L"Shader/SimplePixelShader.hlsl",
+        nullptr,
+        D3D_COMPILE_STANDARD_FILE_INCLUDE,
+        "SimplePS", "ps_5_0",
+        D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
+        0,
+        &ps_blob, &err_blob
+    );
+
+    if (FAILED(result))
+    {
+        if (result == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
+        {
+            DebugOutput("Pixel shader file not found");
+            exit(15);
+        }
+        else
+        {
+            std::string err_str;
+            err_str.resize(err_blob->GetBufferSize());
+            std::copy_n((char*)err_blob->GetBufferPointer(), err_blob->GetBufferSize(), err_str.begin());
+            err_str += "\n";
+
+            DebugOutput(err_str.c_str());
+            exit(16);
+        }
+    }
 
     // Main loop
     ShowWindow(hwnd, SW_SHOW);
