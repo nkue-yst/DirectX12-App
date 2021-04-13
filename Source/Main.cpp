@@ -233,10 +233,10 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int)
     // Create vertices buffer
     DirectX::XMFLOAT3 vertices[] =
     {
-        {-0.4f, -0.7f,  0.0f},
-        {-0.4f,  0.7f,  0.0f},
-        { 0.4f, -0.7f,  0.0f},
-        { 0.4f,  0.7f,  0.0f},
+        {-0.8f, -0.8f,  0.0f},
+        {-0.8f,  0.8f,  0.0f},
+        { 0.8f, -0.8f,  0.0f},
+        { 0.8f,  0.8f,  0.0f},
     };
 
     // Heap settings
